@@ -10,6 +10,8 @@ The application is publicly available at:
 
 https://darlak-ai.onrender.com
 
+<img width="1920" height="1200" alt="1" src="https://github.com/user-attachments/assets/9547e8ac-2710-46c0-99f3-6a4d8b1583de" />
+
 ### Example incident
 
 Use the following data to test the application:
