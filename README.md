@@ -1,8 +1,8 @@
 # AI Incident Agent
 
-AI-assisted IT incident analysis application built with ASP.NET Core, PostgreSQL and OpenAI.
+AI-assisted IT incident analysis application built with ASP.NET Core, PostgreSQL, pgvector and OpenAI.
 
-The application analyzes new IT incidents using historical support tickets and AI-generated recommendations.
+The application analyzes new IT incidents using semantic search over more than 16,000 historical support tickets and generates structured AI recommendations.
 
 ## Live Demo
 
@@ -10,7 +10,7 @@ The application is publicly available at:
 
 https://darlak-ai.onrender.com
 
-<img width="1920" height="1200" alt="1" src="https://github.com/user-attachments/assets/9547e8ac-2710-46c0-99f3-6a4d8b1583de" />
+<img width="1920" height="1200" alt="AI Incident Agent" src="https://github.com/user-attachments/assets/9547e8ac-2710-46c0-99f3-6a4d8b1583de" />
 
 ### Example incident
 
@@ -47,16 +47,22 @@ The application currently supports:
 - Web interface for entering IT incidents
 - ASP.NET Core Web API backend
 - PostgreSQL database with more than 16,000 historical support tickets
-- Search for historical incidents based on the new incident title
-- Retrieval of up to 5 matching historical tickets
+- pgvector integration
+- Vector embeddings with 768 dimensions
+- Semantic search based on cosine distance
+- HNSW index for efficient vector search
+- Retrieval of up to 5 semantically related historical tickets
 - Limited data projection before sending historical data to AI
 - Basic PII sanitization for email addresses and phone numbers
-- AI analysis using historical incidents as additional context
-- Probable cause recommendation
-- Suggested solution
-- Recommended support team
+- Historical incidents used as additional AI context
+- Structured AI response containing:
+  - Probable cause
+  - Suggested solution
+  - Recommended support team
 - Local AI support through Ollama
+- Local embeddings through `nomic-embed-text`
 - Cloud AI support through OpenAI API
+- Cloud embeddings through `text-embedding-3-small`
 - Docker deployment
 - Public deployment on Render
 
@@ -65,53 +71,101 @@ The application currently supports:
 ## How it works
 
 ```text
-User
-  ↓
+New Incident
+     ↓
 Web Frontend
-  ↓
+     ↓
 ASP.NET Core API
-  ↓
-Ticket Search Service
-  ↓
-Repository
-  ↓
-PostgreSQL
-  ↓
-Up to 5 matching historical tickets
-  ↓
+     ↓
+Embedding Model
+     ↓
+768-dimensional vector
+     ↓
+PostgreSQL + pgvector
+     ↓
+Semantic Search
+     ↓
+5 most relevant historical tickets
+     ↓
 Data Sanitization
-  ↓
-OpenAI
-  ↓
-Incident Analysis
-  ↓
+     ↓
+LLM
+     ↓
+Structured Incident Analysis
+     ↓
 Web Frontend
 ```
 
-When a new incident is submitted, the application searches the historical ticket database.
+When a new incident is submitted, its content is converted into a vector embedding.
 
-Currently, the incident title is compared with the `Subject` and `Body` fields of historical tickets using case-insensitive text matching.
+The application compares this vector with embeddings of historical tickets stored in PostgreSQL using pgvector and cosine distance.
 
-Up to 5 matching tickets are retrieved from PostgreSQL. Only selected information is passed to the AI:
+The five most semantically similar historical incidents are selected as additional context for the AI.
+
+Only selected historical information is passed to the model:
 
 - Subject
 - Description
 - Historical solution
 - Queue
 
-The data is sanitized before being included in the AI prompt.
+The historical data is sanitized before being included in the AI prompt.
 
-The new incident remains the primary source of information, while historical tickets are used only as additional reference material.
+The new incident remains the primary source of information, while historical tickets provide additional context for the analysis.
 
 ---
 
-## Current search limitation
+## Semantic search
 
-The current historical ticket search is intentionally simple.
+Historical ticket search uses vector embeddings instead of simple keyword matching.
 
-It uses text matching and does not yet calculate semantic similarity between incidents.
+```text
+Historical ticket
+      ↓
+Embedding model
+      ↓
+768-dimensional vector
+      ↓
+PostgreSQL / pgvector
+```
 
-The next step is to improve filtering and ranking and introduce semantic search using embeddings, allowing the application to find related incidents based on meaning rather than only matching text.
+For a new incident:
+
+```text
+New incident
+      ↓
+Embedding model
+      ↓
+Query vector
+      ↓
+Cosine distance
+      ↓
+5 closest historical tickets
+```
+
+An HNSW index using `vector_cosine_ops` is used to support efficient similarity search.
+
+Local development uses Ollama with `nomic-embed-text`.
+
+The production environment uses OpenAI `text-embedding-3-small` configured to generate 768-dimensional vectors.
+
+Embeddings stored in each environment are generated using the same embedding model used for queries in that environment.
+
+---
+
+## AI response
+
+The AI returns a structured response instead of unrestricted free text:
+
+```json
+{
+  "probableCause": "...",
+  "suggestedSolution": "...",
+  "recommendedTeam": "..."
+}
+```
+
+The backend deserializes the response into a strongly typed .NET model before returning it to the frontend.
 
 ---
 
@@ -122,14 +176,19 @@ The next step is to improve filtering and ranking and introduce semantic search 
 - .NET 8
 - ASP.NET Core Web API
 - Entity Framework Core
+- Repository pattern
 
 **Database**
 - PostgreSQL
 - Npgsql
+- pgvector
+- HNSW vector index
 
 **AI**
 - OpenAI API – cloud environment
+- `text-embedding-3-small` – cloud embeddings
 - Ollama – local development
+- `nomic-embed-text` – local embeddings
 - OllamaSharp
 
 **Frontend**
@@ -162,22 +221,53 @@ AI Data Sanitizer
 AI
 ```
 
-Email addresses and phone numbers are removed from the historical data before it is sent to the AI.
+Only selected historical ticket fields are used as AI context.
+
+Email addresses and phone numbers are removed from historical data before it is sent to the AI.
+
+API keys and database credentials are provided through environment configuration and are not stored in source code.
+
+---
+
+## Local and cloud architecture
+
+```text
+LOCAL
+.NET API
+   ↓
+Ollama
+   ├── qwen3
+   └── nomic-embed-text
+   ↓
+PostgreSQL + pgvector
+
+PRODUCTION
+.NET API
+   ↓
+OpenAI
+   ├── LLM
+   └── text-embedding-3-small
+   ↓
+PostgreSQL + pgvector
+```
+
+The application uses abstractions such as `IAiClient` and `IEmbeddingClient`, allowing different AI providers to be used without changing the main application logic.
 
 ---
 
 ## Planned development
 
-- Improved historical ticket filtering and ranking
-- Semantic search using embeddings
-- Better selection of relevant AI context
-- Structured AI responses
+- Complete production embedding generation for the historical dataset
 - Agent tools and automated actions
 - Application and AI activity logging
 - Agent action audit history
 - Human approval for selected actions
-- Improved error handling and security
+- Improved prompt-injection protection
+- Improved frontend output sanitization
+- Rate limiting and authentication
+- Improved error handling
 - Automated tests
+- Observability and monitoring
 
 The goal is to evolve the application from an AI-assisted incident analyzer into an AI Incident Agent supporting L1 incident triage.
 
@@ -185,10 +275,24 @@ The goal is to evolve the application from an AI-assisted incident analyzer into
 
 ## Project status
 
-The core end-to-end flow is operational:
+The production application and structured OpenAI analysis are operational.
+
+Semantic search with pgvector, 768-dimensional embeddings and HNSW indexing is implemented and tested locally.
+
+The production database schema is prepared for semantic search, while generation of OpenAI embeddings for the historical production dataset is the remaining deployment step.
 
 ```text
-Frontend → ASP.NET Core → PostgreSQL → OpenAI → Frontend
+Frontend
+   ↓
+ASP.NET Core
+   ↓
+Semantic Retrieval / PostgreSQL + pgvector
+   ↓
+OpenAI
+   ↓
+Structured Analysis
+   ↓
+Frontend
 ```
 
 The application is under active development.
