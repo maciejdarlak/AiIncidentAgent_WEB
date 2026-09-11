@@ -10,7 +10,7 @@ The application is publicly available at:
 
 https://darlak-ai.onrender.com
 
-<img width="1920" height="1200" alt="1" src="https://github.com/user-attachments/assets/d33b45e5-6431-41d8-9cdc-6faf3c381214" />
+<img width="1920" height="1200" alt="AI Incident Agent" src="https://github.com/user-attachments/assets/d33b45e5-6431-41d8-9cdc-6faf3c381214" />
 
 ### Example incident
 
@@ -70,60 +70,7 @@ Click **Analyze incident** to generate the analysis and proposed agent action.
 
 ## Architecture
 
-```text
-                    NEW INCIDENT
-                         │
-                         ▼
-                  Web Frontend
-                         │
-                         ▼
-                 ASP.NET Core API
-                         │
-                         ▼
-                  Input Validation
-                         │
-                         ▼
-                   Embedding Model
-                         │
-                         ▼
-                 Query Vector (768)
-                         │
-                         ▼
-              PostgreSQL + pgvector
-                         │
-                  HNSW / Cosine
-                         │
-                         ▼
-             5 Similar Historical
-                    Incidents
-                         │
-                         ▼
-                 PII Sanitization
-                         │
-                         ▼
-                     RAG Prompt
-                         │
-                         ▼
-                        LLM
-                         │
-                         ▼
-              Structured AI Analysis
-                         │
-             ┌───────────┴───────────┐
-             ▼                       ▼
-       Incident Analysis       Agent Action
-                                    │
-                                    ▼
-                                Proposed
-                                    │
-                             Human Approval
-                                    │
-                                    ▼
-                                Approved
-                                    │
-                                    ▼
-                              PostgreSQL
-```
+<img width="1536" height="1024" alt="AI Incident Agent architecture" src="https://github.com/user-attachments/assets/9cbbbc6a-fe17-4d2a-9dd9-032e837e9ceb" />
 
 ---
 
@@ -137,9 +84,9 @@ PostgreSQL with pgvector performs semantic similarity search against embeddings 
 
 An HNSW index using `vector_cosine_ops` supports efficient vector retrieval.
 
-The five most semantically similar historical incidents are retrieved.
+The five most semantically similar historical incidents are retrieved and used as RAG context.
 
-Only selected historical information is used:
+Only selected historical information is included:
 
 - Subject
 - Description
@@ -148,9 +95,7 @@ Only selected historical information is used:
 
 Historical content is sanitized before being added to the LLM context.
 
-The retrieved incidents are then used as RAG context for the language model.
-
-The LLM returns structured information including:
+The LLM then returns structured information including:
 
 - Probable cause
 - Suggested solution
@@ -167,26 +112,6 @@ The backend validates and deserializes the AI response into strongly typed .NET 
 
 The application goes beyond incident analysis by proposing an operational action.
 
-```text
-AI Analysis
-     │
-     ▼
-Proposed Agent Action
-     │
-     ▼
-Stored in PostgreSQL
-     │
-     ▼
-Human Review
-     │
-     ▼
-Approve
-     │
-     ▼
-Status = Approved
-ApprovedAt = UTC timestamp
-```
-
 Agent actions contain:
 
 - Action type
@@ -196,6 +121,20 @@ Agent actions contain:
 - Status
 - Creation timestamp
 - Approval timestamp
+
+The workflow is:
+
+```text
+AI Analysis
+   ↓
+Proposed Agent Action
+   ↓
+Stored in PostgreSQL
+   ↓
+Human Review
+   ↓
+Approved
+```
 
 Actions are intentionally **not automatically executed**.
 
@@ -207,59 +146,30 @@ External execution through systems such as ServiceNow or Jira can be added later
 
 ## Semantic Search and RAG
 
-Historical ticket search uses embeddings instead of keyword matching.
+Historical ticket search uses embeddings instead of simple keyword matching.
 
-```text
-Historical Tickets
-       │
-       ▼
-Embedding Model
-       │
-       ▼
-768-dimensional vectors
-       │
-       ▼
-PostgreSQL + pgvector
-       │
-       ▼
-HNSW Index
-```
-
-For every new incident:
-
-```text
-New Incident
-     │
-     ▼
-Embedding
-     │
-     ▼
-Query Vector
-     │
-     ▼
-Cosine Distance
-     │
-     ▼
-Top 5 Historical Incidents
-     │
-     ▼
-RAG Context
-     │
-     ▼
-LLM
-```
-
-All 16,000+ historical tickets in the production environment have embeddings generated with OpenAI `text-embedding-3-small`.
+The production environment uses OpenAI `text-embedding-3-small` configured to generate 768-dimensional vectors.
 
 Local development uses Ollama with `nomic-embed-text`.
 
 Embeddings stored in each environment are generated using the same embedding model used for queries in that environment.
 
+All 16,000+ historical production tickets have generated embeddings.
+
+Semantic retrieval uses:
+
+- pgvector
+- cosine distance
+- HNSW index
+- top 5 nearest historical incidents
+
+The retrieved tickets provide additional context for the LLM without replacing the new incident as the primary source of information.
+
 ---
 
 ## Structured AI Output
 
-The LLM is instructed to return structured JSON rather than unrestricted free text.
+The LLM is instructed to return structured JSON instead of unrestricted free text.
 
 Example:
 
@@ -324,25 +234,6 @@ Prompt-injection protection is treated as a defense-in-depth mechanism rather th
 API keys and database credentials are provided through environment configuration and are not stored in source code.
 
 The AI model has no direct database access.
-
-```text
-PostgreSQL
-     │
-     ▼
-Repository Layer
-     │
-     ▼
-Selected Fields
-     │
-     ▼
-AI Data Sanitizer
-     │
-     ▼
-RAG Context
-     │
-     ▼
-LLM
-```
 
 ---
 
@@ -457,34 +348,19 @@ Tests use a dedicated PostgreSQL test database with the same pgvector-based sche
 
 ## Local and Production Architecture
 
-The application uses provider abstractions so local and production environments can use different AI services without changing the core application logic.
+The application uses provider abstractions so local and production environments can use different AI services without changing the main application logic.
 
-```text
-LOCAL
+### Local development
 
-ASP.NET Core
-     │
-     ├── IAiClient
-     │      └── Ollama / qwen3
-     │
-     ├── IEmbeddingClient
-     │      └── Ollama / nomic-embed-text
-     │
-     └── PostgreSQL + pgvector
+- `IAiClient` → Ollama / `qwen3`
+- `IEmbeddingClient` → Ollama / `nomic-embed-text`
+- PostgreSQL + pgvector
 
+### Production
 
-PRODUCTION
-
-ASP.NET Core
-     │
-     ├── IAiClient
-     │      └── OpenAI
-     │
-     ├── IEmbeddingClient
-     │      └── OpenAI / text-embedding-3-small
-     │
-     └── PostgreSQL + pgvector
-```
+- `IAiClient` → OpenAI
+- `IEmbeddingClient` → OpenAI / `text-embedding-3-small`
+- PostgreSQL + pgvector
 
 The main abstractions are:
 
@@ -499,40 +375,6 @@ This separates application logic from specific AI providers and database impleme
 ## Production Status
 
 The complete incident analysis and approval flow is operational in production.
-
-```text
-Incident
-   │
-   ▼
-OpenAI Embedding
-   │
-   ▼
-Semantic Search
-   │
-   ▼
-5 Historical Tickets
-   │
-   ▼
-RAG
-   │
-   ▼
-OpenAI Analysis
-   │
-   ▼
-Structured Result
-   │
-   ▼
-Proposed Agent Action
-   │
-   ▼
-PostgreSQL
-   │
-   ▼
-Human Approval
-   │
-   ▼
-Approved
-```
 
 Production currently includes:
 
@@ -572,23 +414,14 @@ The project demonstrates how traditional .NET backend engineering can be combine
 
 It combines:
 
-```text
-.NET Backend Engineering
-        +
-PostgreSQL / Vector Search
-        +
-RAG
-        +
-LLM Integration
-        +
-Agent Workflow
-        +
-Human-in-the-Loop
-        +
-Security
-        +
-Observability
-```
+- .NET backend engineering
+- PostgreSQL and vector search
+- RAG
+- LLM integration
+- Agent workflow
+- Human-in-the-loop approval
+- Security
+- Observability
 
 The goal is to build a practical AI-assisted L1 incident triage system rather than a standalone chatbot.
 
