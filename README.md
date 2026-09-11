@@ -70,7 +70,7 @@ Click **Analyze incident** to generate the analysis and proposed agent action.
 
 ## Architecture
 
-<img width="1536" height="1024" alt="AI Incident Agent architecture" src="https://github.com/user-attachments/assets/9cbbbc6a-fe17-4d2a-9dd9-032e837e9ceb" />
+![AI Incident Agent architecture](schema.jpeg)
 
 ---
 
