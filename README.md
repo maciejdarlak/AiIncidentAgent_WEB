@@ -1,8 +1,8 @@
 # AI Incident Agent
 
-AI-assisted IT incident analysis application built with ASP.NET Core, PostgreSQL, pgvector and OpenAI.
+AI-powered IT incident triage application built with ASP.NET Core, PostgreSQL, pgvector, OpenAI and Ollama.
 
-The application analyzes new IT incidents using semantic search over more than 16,000 historical support tickets and generates structured AI recommendations.
+The application analyzes new IT incidents using RAG and semantic search over more than 16,000 historical support tickets, generates structured incident analysis, proposes an agent action and supports human approval before the action is accepted.
 
 ## Live Demo
 
@@ -10,11 +10,9 @@ The application is publicly available at:
 
 https://darlak-ai.onrender.com
 
-<img width="1920" height="1200" alt="AI Incident Agent" src="https://github.com/user-attachments/assets/9547e8ac-2710-46c0-99f3-6a4d8b1583de" />
+<img width="1920" height="1200" alt="1" src="https://github.com/user-attachments/assets/d33b45e5-6431-41d8-9cdc-6faf3c381214" />
 
 ### Example incident
-
-Use the following data to test the application:
 
 **Incident title**
 ```text
@@ -36,269 +34,568 @@ PAYMENT_ERROR
 Billing
 ```
 
-Click **Analyze incident** to generate the analysis.
+Click **Analyze incident** to generate the analysis and proposed agent action.
 
 ---
 
-## Current functionality
+## Key Features
 
-The application currently supports:
-
-- Web interface for entering IT incidents
-- ASP.NET Core Web API backend
-- PostgreSQL database with more than 16,000 historical support tickets
-- pgvector integration
-- Vector embeddings with 768 dimensions
-- Semantic search based on cosine distance
-- HNSW index for efficient vector search
-- Retrieval of up to 5 semantically related historical tickets
-- Limited data projection before sending historical data to AI
-- Basic PII sanitization for email addresses and phone numbers
-- Historical incidents used as additional AI context
-- Structured AI response containing:
-  - Probable cause
-  - Suggested solution
-  - Recommended support team
-- Local AI support through Ollama
-- Local embeddings through `nomic-embed-text`
-- Cloud AI support through OpenAI API
-- Cloud embeddings through `text-embedding-3-small`
+- ASP.NET Core Web API
+- PostgreSQL database with 16,000+ historical IT support tickets
+- RAG-based incident analysis
+- pgvector semantic search
+- 768-dimensional vector embeddings
+- HNSW vector index with cosine distance
+- Retrieval of the 5 most relevant historical incidents
+- Structured LLM output
+- Incident category and priority classification
+- AI-generated agent action proposal
+- Persistent agent action audit data
+- Human-in-the-loop approval workflow
+- `Proposed → Approved` action lifecycle
+- Approval timestamp (`ApprovedAt`)
+- Application and agent activity logging
+- Input validation
+- Request size limits
+- API rate limiting
+- Basic PII sanitization
+- Prompt-injection hardening
+- Automated tests
+- Local AI with Ollama
+- Production AI with OpenAI
 - Docker deployment
 - Public deployment on Render
 
 ---
 
-## How it works
+## Architecture
 
 ```text
-New Incident
-     ↓
-Web Frontend
-     ↓
-ASP.NET Core API
-     ↓
-Embedding Model
-     ↓
-768-dimensional vector
-     ↓
-PostgreSQL + pgvector
-     ↓
-Semantic Search
-     ↓
-5 most relevant historical tickets
-     ↓
-Data Sanitization
-     ↓
-LLM
-     ↓
-Structured Incident Analysis
-     ↓
-Web Frontend
+                    NEW INCIDENT
+                         │
+                         ▼
+                  Web Frontend
+                         │
+                         ▼
+                 ASP.NET Core API
+                         │
+                         ▼
+                  Input Validation
+                         │
+                         ▼
+                   Embedding Model
+                         │
+                         ▼
+                 Query Vector (768)
+                         │
+                         ▼
+              PostgreSQL + pgvector
+                         │
+                  HNSW / Cosine
+                         │
+                         ▼
+             5 Similar Historical
+                    Incidents
+                         │
+                         ▼
+                 PII Sanitization
+                         │
+                         ▼
+                     RAG Prompt
+                         │
+                         ▼
+                        LLM
+                         │
+                         ▼
+              Structured AI Analysis
+                         │
+             ┌───────────┴───────────┐
+             ▼                       ▼
+       Incident Analysis       Agent Action
+                                    │
+                                    ▼
+                                Proposed
+                                    │
+                             Human Approval
+                                    │
+                                    ▼
+                                Approved
+                                    │
+                                    ▼
+                              PostgreSQL
 ```
 
-When a new incident is submitted, its content is converted into a vector embedding.
+---
 
-The application compares this vector with embeddings of historical tickets stored in PostgreSQL using pgvector and cosine distance.
+## How It Works
 
-The five most semantically similar historical incidents are selected as additional context for the AI.
+When a new incident is submitted, the application combines its title, description, error code and service information.
 
-Only selected historical information is passed to the model:
+The incident is converted into a 768-dimensional embedding.
+
+PostgreSQL with pgvector performs semantic similarity search against embeddings generated for more than 16,000 historical support tickets.
+
+An HNSW index using `vector_cosine_ops` supports efficient vector retrieval.
+
+The five most semantically similar historical incidents are retrieved.
+
+Only selected historical information is used:
 
 - Subject
 - Description
 - Historical solution
 - Queue
 
-The historical data is sanitized before being included in the AI prompt.
+Historical content is sanitized before being added to the LLM context.
 
-The new incident remains the primary source of information, while historical tickets provide additional context for the analysis.
+The retrieved incidents are then used as RAG context for the language model.
+
+The LLM returns structured information including:
+
+- Probable cause
+- Suggested solution
+- Recommended team
+- Incident category
+- Priority
+- Proposed agent action
+
+The backend validates and deserializes the AI response into strongly typed .NET models.
 
 ---
 
-## Semantic search
+## Agent Action Workflow
 
-Historical ticket search uses vector embeddings instead of simple keyword matching.
-
-```text
-Historical ticket
-      ↓
-Embedding model
-      ↓
-768-dimensional vector
-      ↓
-PostgreSQL / pgvector
-```
-
-For a new incident:
+The application goes beyond incident analysis by proposing an operational action.
 
 ```text
-New incident
-      ↓
-Embedding model
-      ↓
-Query vector
-      ↓
-Cosine distance
-      ↓
-5 closest historical tickets
+AI Analysis
+     │
+     ▼
+Proposed Agent Action
+     │
+     ▼
+Stored in PostgreSQL
+     │
+     ▼
+Human Review
+     │
+     ▼
+Approve
+     │
+     ▼
+Status = Approved
+ApprovedAt = UTC timestamp
 ```
 
-An HNSW index using `vector_cosine_ops` is used to support efficient similarity search.
+Agent actions contain:
+
+- Action type
+- Target
+- Reason
+- Execution instructions
+- Status
+- Creation timestamp
+- Approval timestamp
+
+Actions are intentionally **not automatically executed**.
+
+The current implementation uses a human-in-the-loop workflow where the AI proposes an action and a user explicitly approves it.
+
+External execution through systems such as ServiceNow or Jira can be added later through dedicated tool integrations.
+
+---
+
+## Semantic Search and RAG
+
+Historical ticket search uses embeddings instead of keyword matching.
+
+```text
+Historical Tickets
+       │
+       ▼
+Embedding Model
+       │
+       ▼
+768-dimensional vectors
+       │
+       ▼
+PostgreSQL + pgvector
+       │
+       ▼
+HNSW Index
+```
+
+For every new incident:
+
+```text
+New Incident
+     │
+     ▼
+Embedding
+     │
+     ▼
+Query Vector
+     │
+     ▼
+Cosine Distance
+     │
+     ▼
+Top 5 Historical Incidents
+     │
+     ▼
+RAG Context
+     │
+     ▼
+LLM
+```
+
+All 16,000+ historical tickets in the production environment have embeddings generated with OpenAI `text-embedding-3-small`.
 
 Local development uses Ollama with `nomic-embed-text`.
-
-The production environment uses OpenAI `text-embedding-3-small` configured to generate 768-dimensional vectors.
 
 Embeddings stored in each environment are generated using the same embedding model used for queries in that environment.
 
 ---
 
-## AI response
+## Structured AI Output
 
-The AI returns a structured response instead of unrestricted free text:
+The LLM is instructed to return structured JSON rather than unrestricted free text.
+
+Example:
 
 ```json
 {
   "probableCause": "...",
   "suggestedSolution": "...",
-  "recommendedTeam": "..."
+  "recommendedTeam": "...",
+  "category": "...",
+  "priority": "...",
+  "action": {
+    "actionType": "...",
+    "target": "...",
+    "reason": "...",
+    "howToExecute": "...",
+    "status": "Proposed"
+  }
 }
 ```
 
-The backend deserializes the response into a strongly typed .NET model before returning it to the frontend.
+The backend deserializes this response into strongly typed C# models before returning the result to the frontend.
 
 ---
 
-## Technology stack
+## Security
 
-**Backend**
+The application includes several protection layers.
+
+### Input validation
+
+ASP.NET Core model validation limits incoming incident data:
+
+- Title: 3–200 characters
+- Description: 5–5000 characters
+- Error code: maximum 100 characters
+- Service: maximum 100 characters
+
+### Request protection
+
+The analyze endpoint includes:
+
+- Request size limit
+- Rate limiting
+- Automatic validation through `[ApiController]`
+
+### AI data protection
+
+Historical ticket data is treated as untrusted input.
+
+Before being sent to the LLM:
+
+- Only selected database fields are retrieved
+- Email addresses are removed
+- Phone numbers are removed
+- Prompt rules instruct the model not to follow instructions contained inside incident data
+- Incident content cannot intentionally redefine the application's system behavior
+
+Prompt-injection protection is treated as a defense-in-depth mechanism rather than an absolute security guarantee.
+
+### Secrets
+
+API keys and database credentials are provided through environment configuration and are not stored in source code.
+
+The AI model has no direct database access.
+
+```text
+PostgreSQL
+     │
+     ▼
+Repository Layer
+     │
+     ▼
+Selected Fields
+     │
+     ▼
+AI Data Sanitizer
+     │
+     ▼
+RAG Context
+     │
+     ▼
+LLM
+```
+
+---
+
+## Observability
+
+Important application operations are logged by the ASP.NET Core backend.
+
+Examples include:
+
+```text
+Incident analysis started
+Semantic search completed
+Incident analysis completed
+Agent action approved
+```
+
+Logs include operational information such as:
+
+- Number of retrieved historical tickets
+- Generated action ID
+- Recommended action target
+- Action status
+- Approval timestamp
+
+Database operations are also visible through Entity Framework Core logging.
+
+---
+
+## Automated Tests
+
+The solution includes an xUnit test project.
+
+Current automated tests cover:
+
+- `Proposed → Approved` workflow
+- Approval timestamp
+- Attempt to approve an already approved action
+- Approval of a non-existing action
+- Required incident fields
+- Minimum title length
+- Maximum title length
+- Minimum description length
+- Maximum description length
+- Maximum error code length
+- Maximum service length
+
+Current test suite:
+
+```text
+11 Passed
+0 Failed
+```
+
+Tests use a dedicated PostgreSQL test database with the same pgvector-based schema and EF Core migrations as the application.
+
+---
+
+## Technology Stack
+
+### Backend
+
 - C#
 - .NET 8
 - ASP.NET Core Web API
 - Entity Framework Core
 - Repository pattern
+- Dependency Injection
+- Async/Await
 
-**Database**
+### Database
+
 - PostgreSQL
 - Npgsql
 - pgvector
-- HNSW vector index
+- HNSW vector indexing
+- Entity Framework Core migrations
 
-**AI**
-- OpenAI API – cloud environment
-- `text-embedding-3-small` – cloud embeddings
-- Ollama – local development
-- `nomic-embed-text` – local embeddings
+### AI / RAG
+
+- OpenAI API
+- `text-embedding-3-small`
+- Ollama
+- `qwen3`
+- `nomic-embed-text`
 - OllamaSharp
+- Semantic Search
+- Retrieval-Augmented Generation (RAG)
 
-**Frontend**
+### Frontend
+
 - HTML
 - CSS
 - JavaScript
 
-**Infrastructure**
+### Infrastructure
+
 - Docker
 - Render
 - GitHub
 
----
+### Quality and Security
 
-## Data and security
-
-The PostgreSQL database contains more than 16,000 historical English-language IT support tickets.
-
-The AI model does not have direct access to the database. Database access is controlled by the .NET application through the repository layer.
-
-```text
-PostgreSQL
-    ↓
-Repository
-    ↓
-Selected ticket fields
-    ↓
-AI Data Sanitizer
-    ↓
-AI
-```
-
-Only selected historical ticket fields are used as AI context.
-
-Email addresses and phone numbers are removed from historical data before it is sent to the AI.
-
-API keys and database credentials are provided through environment configuration and are not stored in source code.
+- xUnit
+- ASP.NET Core validation
+- Rate limiting
+- Request size limiting
+- PII sanitization
+- Prompt-injection hardening
+- Structured logging
 
 ---
 
-## Local and cloud architecture
+## Local and Production Architecture
+
+The application uses provider abstractions so local and production environments can use different AI services without changing the core application logic.
 
 ```text
 LOCAL
-.NET API
-   ↓
-Ollama
-   ├── qwen3
-   └── nomic-embed-text
-   ↓
-PostgreSQL + pgvector
+
+ASP.NET Core
+     │
+     ├── IAiClient
+     │      └── Ollama / qwen3
+     │
+     ├── IEmbeddingClient
+     │      └── Ollama / nomic-embed-text
+     │
+     └── PostgreSQL + pgvector
+
 
 PRODUCTION
-.NET API
-   ↓
-OpenAI
-   ├── LLM
-   └── text-embedding-3-small
-   ↓
-PostgreSQL + pgvector
+
+ASP.NET Core
+     │
+     ├── IAiClient
+     │      └── OpenAI
+     │
+     ├── IEmbeddingClient
+     │      └── OpenAI / text-embedding-3-small
+     │
+     └── PostgreSQL + pgvector
 ```
 
-The application uses abstractions such as `IAiClient` and `IEmbeddingClient`, allowing different AI providers to be used without changing the main application logic.
+The main abstractions are:
+
+- `IAiClient`
+- `IEmbeddingClient`
+- `ITicketRepository`
+
+This separates application logic from specific AI providers and database implementation details.
 
 ---
 
-## Planned development
+## Production Status
 
-- Complete production embedding generation for the historical dataset
-- Agent tools and automated actions
-- Application and AI activity logging
-- Agent action audit history
-- Human approval for selected actions
-- Improved prompt-injection protection
-- Improved frontend output sanitization
-- Rate limiting and authentication
-- Improved error handling
-- Automated tests
-- Observability and monitoring
-
-The goal is to evolve the application from an AI-assisted incident analyzer into an AI Incident Agent supporting L1 incident triage.
-
----
-
-## Project status
-
-The production application and structured OpenAI analysis are operational.
-
-Semantic search with pgvector, 768-dimensional embeddings and HNSW indexing is implemented and tested locally.
-
-The production database schema is prepared for semantic search, while generation of OpenAI embeddings for the historical production dataset is the remaining deployment step.
+The complete incident analysis and approval flow is operational in production.
 
 ```text
-Frontend
-   ↓
-ASP.NET Core
-   ↓
-Semantic Retrieval / PostgreSQL + pgvector
-   ↓
-OpenAI
-   ↓
-Structured Analysis
-   ↓
-Frontend
+Incident
+   │
+   ▼
+OpenAI Embedding
+   │
+   ▼
+Semantic Search
+   │
+   ▼
+5 Historical Tickets
+   │
+   ▼
+RAG
+   │
+   ▼
+OpenAI Analysis
+   │
+   ▼
+Structured Result
+   │
+   ▼
+Proposed Agent Action
+   │
+   ▼
+PostgreSQL
+   │
+   ▼
+Human Approval
+   │
+   ▼
+Approved
 ```
 
-The application is under active development.
+Production currently includes:
 
-## Source code
+- 16,000+ historical tickets
+- Complete OpenAI embeddings for the historical dataset
+- pgvector semantic retrieval
+- HNSW indexing
+- OpenAI-based incident analysis
+- Agent action persistence
+- Human approval workflow
+- Application logging
+- Security controls
+- Automated tests
+- Public web interface
 
-The source code is maintained in a private repository.
+---
+
+## Future Development
+
+Possible next steps include:
+
+- ServiceNow or Jira tool integration for approved actions
+- Authentication and authorization
+- More advanced audit history
+- Distributed tracing and metrics
+- Improved observability dashboards
+- Additional integration and end-to-end tests
+- More advanced PII detection
+- Evaluation dataset for measuring RAG quality
+- AI response quality and retrieval metrics
+
+---
+
+## Project Goal
+
+The project demonstrates how traditional .NET backend engineering can be combined with modern LLM application development.
+
+It combines:
+
+```text
+.NET Backend Engineering
+        +
+PostgreSQL / Vector Search
+        +
+RAG
+        +
+LLM Integration
+        +
+Agent Workflow
+        +
+Human-in-the-Loop
+        +
+Security
+        +
+Observability
+```
+
+The goal is to build a practical AI-assisted L1 incident triage system rather than a standalone chatbot.
+
+---
+
+## Source Code
+
+The production source code is maintained in a private repository.
 
 **Source code can be shared on request for recruitment or technical evaluation purposes.**
